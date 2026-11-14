@@ -213,7 +213,7 @@ class _HomePageState extends State<HomePage> {
       (sms['timestamp'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
     );
     final amountMatch = RegExp(
-      r'(?:مبلغ|برداشت|واریز|خرید|پرداخت|مبلغ تراکنش)\\s*[:：]?\\s*([0-9,]+)|([0-9,]+)\\s*(?:تومان|ریال)',
+      r'(?:مبلغ|برداشت|واریز|خرید|پرداخت|مبلغ تراکنش)\s*[:：]?\s*([0-9,٬.]+)|([0-9,٬.]+)\s*(?:تومان|ریال)',
     ).firstMatch(body);
     final rawAmount = amountMatch?.group(1) ?? amountMatch?.group(2);
     final dateMatch = RegExp(r'([0-9]{1,4}[/-][0-9]{1,2}[/-][0-9]{1,4})').firstMatch(body);
@@ -223,7 +223,7 @@ class _HomePageState extends State<HomePage> {
     return {
       'id': key,
       'sender': sender,
-      'amount': rawAmount == null ? null : int.tryParse(rawAmount.replaceAll(',', '')),
+      'amount': rawAmount == null ? null : int.tryParse(rawAmount.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),
       'date': dateMatch?.group(1) ?? '${receivedAt.year.toString().padLeft(4, '0')}/${receivedAt.month.toString().padLeft(2, '0')}/${receivedAt.day.toString().padLeft(2, '0')}',
       'time': timeMatch?.group(1) ?? '${receivedAt.hour.toString().padLeft(2, '0')}:${receivedAt.minute.toString().padLeft(2, '0')}',
       'receivedAt': receivedAt.toIso8601String(),
