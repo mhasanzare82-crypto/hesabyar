@@ -266,26 +266,23 @@ class _HomePageState extends State<HomePage> {
     }
 
     final body = (record['body'] ?? '').toString();
-    final typeLabel = (record['transactionType'] ?? '').toString();
     final amount = (record['amount'] as num?)?.toInt();
     if (amount == null || amount <= 0) {
       record['autoStatus'] = 'needs_review_amount';
       return false;
     }
 
-    String? type;
-    if (body.contains('واریز')) {
-      type = 'income';
-    } else if (body.contains('برداشت') || body.contains('خرید')) {
-      type = 'expense';
-    } else if (body.contains('پرداخت')) {
-      type = 'expense';
-    }
+    final hasIncome = body.contains('واریز');
+    final hasExpense = body.contains('برداشت') ||
+        body.contains('خرید') ||
+        body.contains('پرداخت');
 
-    if (type == null) {
+    // If a message contains both directions, its intent is ambiguous.
+    if (hasIncome == hasExpense) {
       record['autoStatus'] = 'needs_review_type';
       return false;
     }
+    final type = hasIncome ? 'income' : 'expense';
 
     // The app stores all values in toman. Only convert when the SMS explicitly
     // declares rial/toman; do not guess the unit of an unlabelled amount.
@@ -594,7 +591,13 @@ class _HomePageState extends State<HomePage> {
                     child: ListTile(
                       leading: const Icon(Icons.receipt_long_outlined, color: brand),
                       title: Text('${record['transactionType'] ?? 'تراکنش'} • ${record['amount'] == null ? 'مبلغ شناسایی نشد' : _digits((record['amount'] as num).toInt()) + ' ' + (record['unit'] ?? 'واحد نامشخص')}'),
-                      subtitle: Text('${record['sender']}  •  ${record['date']}  •  ${record['time']}\n${record['body']}', maxLines: 4, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(
+                        '${record['sender']}  •  ${record['date']}  •  ${record['time']}\n'
+                        '${record['body']}\n'
+                        '${record['autoStatus'] == 'created' ? '✓ تراکنش خودکار ثبت شد: ${_digits((record['autoAmountToman'] as num?)?.toInt() ?? 0)} تومان' : 'نیازمند بررسی دستی برای ثبت تراکنش'}',
+                        maxLines: 5,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       isThreeLine: true,
                     ),
                   )),
