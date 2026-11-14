@@ -17,8 +17,21 @@ object SmsInboxStore {
     private const val KEY_ACTIVATED_AT = "activatedAt"
     private const val KEY_SEEN = "seen"
 
-    fun prefs(context: Context) =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    fun prefs(context: Context): android.content.SharedPreferences {
+        val app = context.applicationContext
+        val current = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!current.getBoolean("migrationDone", false)) {
+            val old = app.getSharedPreferences("hesabyar_sms", Context.MODE_PRIVATE)
+            val editor = current.edit()
+                .putBoolean("migrationDone", true)
+                .putBoolean(KEY_ENABLED, old.getBoolean(KEY_ENABLED, false))
+                .putStringSet(KEY_SENDERS, old.getStringSet(KEY_SENDERS, emptySet())?.toSet() ?: emptySet())
+                .putLong(KEY_ACTIVATED_AT, old.getLong(KEY_ACTIVATED_AT, 0L))
+                .putString(KEY_PENDING, old.getString(KEY_PENDING, "[]") ?: "[]")
+            editor.commit()
+        }
+        return current
+    }
 
     fun isEnabled(context: Context) = prefs(context).getBoolean(KEY_ENABLED, false)
 
@@ -65,7 +78,7 @@ object SmsInboxStore {
         } catch (_: Exception) {
             JSONArray()
         }
-        val seenSet = (0 until seen.length()).mapNotNull { seen.optString(it).takeIf(String::isNotBlank) }.toMutableSet()
+        val seenSet = (0 until seen.length()).map { seen.optString(it) }.filter { it.isNotBlank() }.toMutableSet()
         var changed = false
 
         grouped.values.forEach { parts ->
@@ -74,7 +87,7 @@ object SmsInboxStore {
             val timestamp = first.timestampMillis
             if (timestamp < cutoff || allowed.none { matchesSender(sender, it) }) return@forEach
 
-            val body = parts.sortedBy { it.indexOnIcc }.joinToString("") { it.messageBody.orEmpty() }
+            val body = parts.joinToString("") { it.messageBody.orEmpty() }
             if (body.isBlank()) return@forEach
             val id = "${sender}|${timestamp}|${body.hashCode()}"
             if (!seenSet.add(id)) return@forEach
