@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const MethodChannel _smsChannel = MethodChannel('hesabyar/sms');
+const EventChannel _smsEvents = EventChannel('hesabyar/sms_events');
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -146,11 +148,22 @@ class _HomePageState extends State<HomePage> {
   bool _smsEnabled = false;
   List<String> _smsSenders = [];
   List<Map<String, dynamic>> _smsRecords = [];
+  StreamSubscription<dynamic>? _smsSubscription;
 
   @override
   void initState() {
     super.initState();
+    _smsSubscription = _smsEvents.receiveBroadcastStream().listen(
+      (_) => _syncIncomingSms(),
+      onError: (_) {},
+    );
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _smsSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -254,7 +267,10 @@ class _HomePageState extends State<HomePage> {
       if (incoming.isNotEmpty) {
         await _smsChannel.invokeMethod<void>('clearPendingSms');
       }
-      if (changed) await _saveData();
+      if (changed) {
+        await _saveData();
+        if (mounted) setState(() {});
+      }
     } on PlatformException {
       // Permission may be unavailable or revoked.
     } on MissingPluginException {
