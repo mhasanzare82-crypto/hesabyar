@@ -317,8 +317,20 @@ class _HomePageState extends State<HomePage> {
     if (!_smsSenders.any((item) => item.toLowerCase() == value.toLowerCase())) {
       _smsSenders.add(value);
     }
+    // Persist the allowlist in Android SharedPreferences immediately,
+    // even while monitoring is disabled. Otherwise it disappears after
+    // leaving/restarting the app and activation sees an empty list.
+    try {
+      await _smsChannel.invokeMethod<void>('setSmsConfig', {
+        'enabled': _smsEnabled,
+        'senders': _smsSenders,
+      });
+    } on PlatformException catch (e) {
+      _notify('ذخیره فرستنده انجام نشد: ${e.message ?? 'خطای نامشخص'}');
+    } on MissingPluginException {
+      _notify('ذخیره فرستنده فقط در نسخه اندروید در دسترس است.');
+    }
     refresh(() {});
-    if (_smsEnabled) await _setSmsMonitoring(true);
   }
 
   Future<void> _openSmsSettings() async {
