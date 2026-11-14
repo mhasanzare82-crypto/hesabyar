@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+const MethodChannel _smsChannel = MethodChannel('hesabyar/sms');
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const HesabyarApp());
@@ -141,6 +143,9 @@ class _HomePageState extends State<HomePage> {
   bool _loading = true;
   List<Account> _accounts = [];
   List<MoneyTransaction> _transactions = [];
+  bool _smsEnabled = false;
+  List<String> _smsSenders = [];
+  List<Map<String, dynamic>> _smsRecords = [];
 
   @override
   void initState() {
@@ -161,6 +166,9 @@ class _HomePageState extends State<HomePage> {
             .map((e) => MoneyTransaction.fromJson(
                 Map<String, dynamic>.from(e as Map)))
             .toList();
+        _smsRecords = (data['smsRecords'] as List<dynamic>? ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
       } catch (_) {
         _accounts = [];
         _transactions = [];
@@ -176,7 +184,264 @@ class _HomePageState extends State<HomePage> {
       ];
       await _saveData();
     }
+    try {
+      final config = await _smsChannel.invokeMapMethod<String, dynamic>('getSmsConfig');
+      _smsEnabled = config?['enabled'] == true;
+      _smsSenders = (config?['senders'] as List<dynamic>? ?? []).cast<String>();
+      await _syncIncomingSms();
+    } on PlatformException {
+      // SMS integration is available only on Android.
+    } on MissingPluginException {
+      // Keep the rest of the app usable on unsupported platforms.
+    }
     if (mounted) setState(() => _loading = false);
+  }
+
+
+  String _normalizeDigits(String value) {
+    const fa = '۰۱۲۳۴۵۶۷۸۹';
+    const ar = '٠١٢٣٤٥٦٧٨٩';
+    for (var i = 0; i < 10; i++) {
+      value = value.replaceAll(fa[i], '$i').replaceAll(ar[i], '$i');
+    }
+    return value;
+  }
+
+  Map<String, dynamic> _parseSms(Map<String, dynamic> sms) {
+    final body = _normalizeDigits((sms['body'] ?? '').toString());
+    final receivedAt = DateTime.fromMillisecondsSinceEpoch(
+      (sms['timestamp'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
+    );
+    final transactionType = RegExp(r'(انتقال|برداشت|واریز|خرید)').firstMatch(body)?.group(1) ?? 'نامشخص';
+    final amountMatch = RegExp(
+      r'(?:خرید|برداشت|واریز|انتقال|مبلغ|پرداخت)\\s*[:：]?\\s*([0-9,٬.]+)',
+    ).firstMatch(body);
+    final rawAmount = amountMatch?.group(1);
+    final balanceMatch = RegExp(r'مانده\\s*[:：]?\\s*([0-9,٬.]+)').firstMatch(body);
+    final dateMatch = RegExp(r'(?<![0-9])([0-9]{6})(?=[-–—])').firstMatch(body)
+        ?? RegExp(r'([0-9]{1,4}[/-][0-9]{1,2}[/-][0-9]{1,4})').firstMatch(body);
+    final timeMatch = RegExp(r'(?<![0-9])([0-2]?[0-9]:[0-5][0-9])').firstMatch(body);
+    final cardMatch = RegExp(r'کارت\\s*([0-9]{4})').firstMatch(body);
+    final sender = (sms['sender'] ?? '').toString();
+    final key = '${sender}_${receivedAt.millisecondsSinceEpoch}_${body.hashCode}';
+    return {
+      'id': key,
+      'sender': sender,
+      'transactionType': transactionType,\n      'amount': rawAmount == null ? null : int.tryParse(rawAmount.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),\n      'balance': balanceMatch?.group(1) == null ? null : int.tryParse(balanceMatch!.group(1)!.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),\n      'cardLast4': cardMatch?.group(1),
+      'unit': body.contains('ریال') ? 'ریال' : (body.contains('تومان') ? 'تومان' : 'واحد نامشخص'),
+      'date': dateMatch?.group(1) ?? '${receivedAt.year.toString().padLeft(4, '0')}/${receivedAt.month.toString().padLeft(2, '0')}/${receivedAt.day.toString().padLeft(2, '0')}',
+      'time': timeMatch?.group(1) ?? '${receivedAt.hour.toString().padLeft(2, '0')}:${receivedAt.minute.toString().padLeft(2, '0')}',
+      'receivedAt': receivedAt.toIso8601String(),
+      'body': body,
+    };
+  }
+
+  Future<void> _syncIncomingSms() async {
+    try {
+      final incoming = await _smsChannel.invokeListMethod<dynamic>('getPendingSms') ?? [];
+      var changed = false;
+      for (final item in incoming) {
+        if (item is! Map) continue;
+        final record = _parseSms(Map<String, dynamic>.from(item));
+        if (!_smsRecords.any((e) => e['id'] == record['id'])) {
+          _smsRecords.insert(0, record);
+          changed = true;
+        }
+      }
+      if (incoming.isNotEmpty) {
+        await _smsChannel.invokeMethod<void>('clearPendingSms');
+      }
+      if (changed) await _saveData();
+    } on PlatformException {
+      // Permission may be unavailable or revoked.
+    } on MissingPluginException {
+      // Unsupported platform.
+    }
+  }
+
+  Future<bool> _setSmsMonitoring(bool enabled) async {
+    try {
+      if (enabled) {
+        final granted = await _smsChannel.invokeMethod<bool>('hasSmsPermission') ?? false;
+        if (!granted) {
+          await _smsChannel.invokeMethod<void>('requestSmsPermission');
+          return false;
+        }
+      }
+      await _smsChannel.invokeMethod<void>('setSmsConfig', {
+        'enabled': enabled,
+        'senders': _smsSenders,
+      });
+      setState(() => _smsEnabled = enabled);
+      if (enabled) await _syncIncomingSms();
+      return true;
+    } on PlatformException catch (e) {
+      _notify('تنظیم پیامک انجام نشد: ${e.message ?? 'خطای نامشخص'}');
+      return false;
+    } on MissingPluginException {
+      _notify('قابلیت پیامک فقط در نسخه اندروید در دسترس است.');
+      return false;
+    }
+  }
+
+  Future<void> _addSmsSender(StateSetter refresh) async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('افزودن شماره فرستنده'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.phone,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'شماره یا سرشماره پیامک',
+            hintText: 'مثلاً 3000 یا 0912...',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('انصراف')),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('افزودن'),
+          ),
+        ],
+      ),
+    );
+    if (value == null || value.isEmpty) return;
+    if (!_smsSenders.contains(value)) _smsSenders.add(value);
+    refresh(() {});
+    if (_smsEnabled) await _setSmsMonitoring(true);
+  }
+
+  Future<void> _openSmsSettings() async {
+    await _syncIncomingSms();
+    if (!mounted) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (pageContext) => StatefulBuilder(
+          builder: (context, refresh) => Scaffold(
+            appBar: AppBar(title: const Text('خواندن پیامک‌ها')),
+            body: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('حریم خصوصی و دسترسی',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 8),
+                        const Text('با فعال‌سازی، حسابیار فقط پیامک‌های جدیدِ شماره‌هایی را که در این صفحه انتخاب می‌کنی دریافت می‌کند. پیامک‌های قدیمی خوانده نمی‌شوند. اطلاعات روی همین دستگاه می‌ماند.'),
+                        const SizedBox(height: 8),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('فعال‌سازی دریافت پیامک'),
+                          value: _smsEnabled,
+                          onChanged: (value) async {
+                            if (value && _smsSenders.isEmpty) {
+                              _notify('ابتدا حداقل یک شماره فرستنده اضافه کن.');
+                              return;
+                            }
+                            final ok = await _setSmsMonitoring(value);
+                            if (!ok && value) {
+                              _notify('اگر مجوز را تأیید کردی، دوباره کلید فعال‌سازی را روشن کن.');
+                            }
+                            refresh(() {});
+                          },
+                        ),
+                        Text(
+                          'برای دریافت پیامک، مجوز حساس SMS از اندروید درخواست می‌شود.',
+                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('شماره‌های مجاز', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    TextButton.icon(
+                      onPressed: () => _addSmsSender(refresh),
+                      icon: const Icon(Icons.add),
+                      label: const Text('افزودن شماره'),
+                    ),
+                  ],
+                ),
+                if (_smsSenders.isEmpty)
+                  const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('هنوز شماره‌ای انتخاب نشده است.')))
+                else
+                  ..._smsSenders.map((sender) => Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.sms_outlined, color: brand),
+                      title: Text(sender, textDirection: TextDirection.ltr),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () async {
+                          _smsSenders.remove(sender);
+                          await _setSmsMonitoring(_smsEnabled && _smsSenders.isNotEmpty);
+                          if (_smsSenders.isEmpty) _smsEnabled = false;
+                          refresh(() {});
+                        },
+                      ),
+                    ),
+                  )),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('پیامک‌های پردازش‌شده', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    TextButton(onPressed: () async { await _syncIncomingSms(); refresh(() {}); }, child: const Text('به‌روزرسانی')),
+                  ],
+                ),
+                if (_smsRecords.isEmpty)
+                  const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('هنوز پیامک جدیدی دریافت نشده است.')))
+                else
+                  ..._smsRecords.map((record) => Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.receipt_long_outlined, color: brand),
+                      title: Text('${record['transactionType'] ?? 'تراکنش'} • ${record['amount'] == null ? 'مبلغ شناسایی نشد' : _digits((record['amount'] as num).toInt()) + ' ' + (record['unit'] ?? 'واحد نامشخص')}'),
+                      subtitle: Text('${record['sender']}  •  ${record['date']}  •  ${record['time']}\n${record['body']}', maxLines: 4, overflow: TextOverflow.ellipsis),
+                      isThreeLine: true,
+                    ),
+                  )),
+                if (_smsRecords.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () async {
+                        final yes = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('پاک‌کردن سوابق پیامک'),
+                            content: const Text('فقط سوابق استخراج‌شده در حسابیار پاک می‌شوند.'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+                              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('پاک‌کردن')),
+                            ],
+                          ),
+                        );
+                        if (yes == true) {
+                          _smsRecords.clear();
+                          await _saveData();
+                          refresh(() {});
+                        }
+                      },
+                      icon: const Icon(Icons.delete_sweep_outlined),
+                      label: const Text('پاک‌کردن سوابق'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _saveData() async {
@@ -187,6 +452,7 @@ class _HomePageState extends State<HomePage> {
         'schemaVersion': 1,
         'accounts': _accounts.map((e) => e.toJson()).toList(),
         'transactions': _transactions.map((e) => e.toJson()).toList(),
+        'smsRecords': _smsRecords,
       }),
     );
   }
@@ -968,6 +1234,14 @@ class _HomePageState extends State<HomePage> {
         Card(
           child: Column(
             children: [
+              ListTile(
+                leading: const Icon(Icons.sms_outlined, color: brand),
+                title: const Text('خواندن پیامک‌ها'),
+                subtitle: const Text('استخراج مبلغ، تاریخ و ساعت از فرستنده‌های منتخب'),
+                trailing: const Icon(Icons.chevron_left),
+                onTap: _openSmsSettings,
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
               ListTile(
                 leading: const Icon(Icons.backup_outlined, color: brand),
                 title: const Text('پشتیبان‌گیری'),
