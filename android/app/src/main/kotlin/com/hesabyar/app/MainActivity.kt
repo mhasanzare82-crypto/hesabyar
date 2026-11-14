@@ -77,6 +77,10 @@ class MainActivity : FlutterActivity() {
                         })
                     }
                     "clearPendingSms" -> result.success(SmsInboxStore.clearPending(this))
+                    "ackPendingSms" -> {
+                        val ids = call.argument<List<String>>("ids")?.toSet() ?: emptySet()
+                        result.success(SmsInboxStore.acknowledge(this, ids))
+                    }
                     "getSmsDiagnostics" -> result.success(
                         mapOf(
                             "permissionGranted" to hasSmsPermission(),
