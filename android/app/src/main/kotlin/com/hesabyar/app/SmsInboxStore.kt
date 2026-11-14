@@ -123,7 +123,7 @@ object SmsInboxStore {
         for (i in queueStart until queue.length()) boundedQueue.put(queue.getJSONObject(i))
 
         val boundedSeen = JSONArray()
-        seenSet.takeLast(500).forEach { boundedSeen.put(it) }
+        seenSet.toList().takeLast(500).forEach { item -> boundedSeen.put(item) }
 
         // A synchronous commit is intentional: the SMS broadcast may be the
         // only process execution we get before Android kills the receiver.
