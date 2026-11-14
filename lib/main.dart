@@ -212,18 +212,22 @@ class _HomePageState extends State<HomePage> {
     final receivedAt = DateTime.fromMillisecondsSinceEpoch(
       (sms['timestamp'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
     );
+    final transactionType = RegExp(r'(انتقال|برداشت|واریز|خرید)').firstMatch(body)?.group(1) ?? 'نامشخص';
     final amountMatch = RegExp(
-      r'(?:مبلغ|برداشت|واریز|خرید|پرداخت|مبلغ تراکنش)\s*[:：]?\s*([0-9,٬.]+)|([0-9,٬.]+)\s*(?:تومان|ریال)',
+      r'(?:خرید|برداشت|واریز|انتقال|مبلغ|پرداخت)\\s*[:：]?\\s*([0-9,٬.]+)',
     ).firstMatch(body);
-    final rawAmount = amountMatch?.group(1) ?? amountMatch?.group(2);
-    final dateMatch = RegExp(r'([0-9]{1,4}[/-][0-9]{1,2}[/-][0-9]{1,4})').firstMatch(body);
+    final rawAmount = amountMatch?.group(1);
+    final balanceMatch = RegExp(r'مانده\\s*[:：]?\\s*([0-9,٬.]+)').firstMatch(body);
+    final dateMatch = RegExp(r'(?<![0-9])([0-9]{6})(?=[-–—])').firstMatch(body)
+        ?? RegExp(r'([0-9]{1,4}[/-][0-9]{1,2}[/-][0-9]{1,4})').firstMatch(body);
     final timeMatch = RegExp(r'(?<![0-9])([0-2]?[0-9]:[0-5][0-9])').firstMatch(body);
+    final cardMatch = RegExp(r'کارت\\s*([0-9]{4})').firstMatch(body);
     final sender = (sms['sender'] ?? '').toString();
     final key = '${sender}_${receivedAt.millisecondsSinceEpoch}_${body.hashCode}';
     return {
       'id': key,
       'sender': sender,
-      'amount': rawAmount == null ? null : int.tryParse(rawAmount.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),
+      'transactionType': transactionType,\n      'amount': rawAmount == null ? null : int.tryParse(rawAmount.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),\n      'balance': balanceMatch?.group(1) == null ? null : int.tryParse(balanceMatch!.group(1)!.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),\n      'cardLast4': cardMatch?.group(1),
       'unit': body.contains('ریال') ? 'ریال' : 'تومان',
       'date': dateMatch?.group(1) ?? '${receivedAt.year.toString().padLeft(4, '0')}/${receivedAt.month.toString().padLeft(2, '0')}/${receivedAt.day.toString().padLeft(2, '0')}',
       'time': timeMatch?.group(1) ?? '${receivedAt.hour.toString().padLeft(2, '0')}:${receivedAt.minute.toString().padLeft(2, '0')}',
@@ -401,7 +405,7 @@ class _HomePageState extends State<HomePage> {
                   ..._smsRecords.map((record) => Card(
                     child: ListTile(
                       leading: const Icon(Icons.receipt_long_outlined, color: brand),
-                      title: Text(record['amount'] == null ? 'مبلغ شناسایی نشد' : '${_digits((record['amount'] as num).toInt())} ${record['unit'] ?? 'تومان'}'),
+                      title: Text('${record['transactionType'] ?? 'تراکنش'} • ${record['amount'] == null ? 'مبلغ شناسایی نشد' : _digits((record['amount'] as num).toInt()) + ' ' + (record['unit'] ?? 'تومان')}'),
                       subtitle: Text('${record['sender']}  •  ${record['date']}  •  ${record['time']}\n${record['body']}', maxLines: 4, overflow: TextOverflow.ellipsis),
                       isThreeLine: true,
                     ),
