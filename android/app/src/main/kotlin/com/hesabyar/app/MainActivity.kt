@@ -8,17 +8,29 @@ import android.os.Bundle
 import androidx.core.app.ActivityCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "hesabyar/sms"
     private var channel: MethodChannel? = null
+    private var smsEvents: EventChannel? = null
     private val permissionRequestCode = 7712
     private var pendingPermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        smsEvents = EventChannel(flutterEngine.dartExecutor.binaryMessenger, "hesabyar/sms_events")
+        smsEvents?.setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                SmsEventBus.sink = events
+            }
+
+            override fun onCancel(arguments: Any?) {
+                SmsEventBus.sink = null
+            }
+        })
         channel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "hasSmsPermission" -> result.success(hasSmsPermission())
