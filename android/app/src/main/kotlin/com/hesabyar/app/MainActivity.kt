@@ -35,10 +35,17 @@ class MainActivity : FlutterActivity() {
                     if (enabled && !hasSmsPermission()) {
                         result.error("PERMISSION_REQUIRED", "مجوز دریافت پیامک داده نشده است", null)
                     } else {
-                        getSharedPreferences(SmsReceiver.PREFS, Context.MODE_PRIVATE).edit()
+                        val prefs = getSharedPreferences(SmsReceiver.PREFS, Context.MODE_PRIVATE)
+                        val wasEnabled = prefs.getBoolean("enabled", false)
+                        val editor = prefs.edit()
                             .putBoolean("enabled", enabled)
                             .putStringSet("senders", senders.toSet())
-                            .apply()
+                        if (enabled && !wasEnabled) {
+                            // Only accept messages received after the user enables monitoring.
+                            editor.putLong("activatedAt", System.currentTimeMillis())
+                                .putString("pending", "[]")
+                        }
+                        editor.apply()
                         result.success(true)
                     }
                 }
