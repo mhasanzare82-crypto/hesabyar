@@ -61,6 +61,20 @@ object SmsInboxStore {
     fun clearPending(context: Context): Boolean =
         prefs(context).edit().putString(KEY_PENDING, "[]").commit()
 
+    fun acknowledge(context: Context, ids: Set<String>): Boolean {
+        if (ids.isEmpty()) return true
+        val p = prefs(context)
+        val current = pending(context)
+        val remaining = JSONArray()
+        for (index in 0 until current.length()) {
+            val item = current.optJSONObject(index) ?: continue
+            if (!ids.contains(item.optString("id"))) remaining.put(item)
+        }
+        // Remove only messages Flutter has durably saved. Messages arriving
+        // while Flutter is processing the queue are retained for the next pass.
+        return p.edit().putString(KEY_PENDING, remaining.toString()).commit()
+    }
+
     fun enqueue(context: Context, messages: List<SmsMessage>): Boolean {
         if (!isEnabled(context)) return false
         val allowed = senders(context)
