@@ -14,6 +14,7 @@ class MainActivity : FlutterActivity() {
     private val channelName = "hesabyar/sms"
     private var channel: MethodChannel? = null
     private val permissionRequestCode = 7712
+    private var pendingPermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -22,12 +23,26 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "hasSmsPermission" -> result.success(hasSmsPermission())
                 "requestSmsPermission" -> {
-                    if (hasSmsPermission()) result.success(true)
-                    else ActivityCompat.requestPermissions(
-                        this,
-                        arrayOf(Manifest.permission.RECEIVE_SMS),
-                        permissionRequestCode
-                    ).also { result.success(false) }
+                    if (hasSmsPermission()) {
+                        result.success(mapOf("granted" to true, "canAskAgain" to true))
+                    } else if (pendingPermissionResult != null) {
+                        result.error("PERMISSION_REQUEST_IN_PROGRESS", "درخواست مجوز پیامک در حال انجام است", null)
+                    } else {
+                        pendingPermissionResult = result
+                        ActivityCompat.requestPermissions(
+                            this,
+                            arrayOf(Manifest.permission.RECEIVE_SMS),
+                            permissionRequestCode
+                        )
+                    }
+                }
+                "openAppSettings" -> {
+                    val intent = android.content.Intent(
+                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.fromParts("package", packageName, null)
+                    )
+                    startActivity(intent)
+                    result.success(true)
                 }
                 "setSmsConfig" -> {
                     val enabled = call.argument<Boolean>("enabled") ?: false
@@ -78,6 +93,26 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != permissionRequestCode) return
+
+        val granted = hasSmsPermission()
+        val canAskAgain = !granted &&
+            ActivityCompat.shouldShowRequestPermissionRationale(
+                this,
+                Manifest.permission.RECEIVE_SMS
+            )
+        pendingPermissionResult?.success(
+            mapOf("granted" to granted, "canAskAgain" to canAskAgain)
+        )
+        pendingPermissionResult = null
     }
 
     private fun hasSmsPermission(): Boolean =
