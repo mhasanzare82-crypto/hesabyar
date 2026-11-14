@@ -224,6 +224,7 @@ class _HomePageState extends State<HomePage> {
       'id': key,
       'sender': sender,
       'amount': rawAmount == null ? null : int.tryParse(rawAmount.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),
+      'unit': body.contains('ریال') ? 'ریال' : 'تومان',
       'date': dateMatch?.group(1) ?? '${receivedAt.year.toString().padLeft(4, '0')}/${receivedAt.month.toString().padLeft(2, '0')}/${receivedAt.day.toString().padLeft(2, '0')}',
       'time': timeMatch?.group(1) ?? '${receivedAt.hour.toString().padLeft(2, '0')}:${receivedAt.minute.toString().padLeft(2, '0')}',
       'receivedAt': receivedAt.toIso8601String(),
@@ -400,7 +401,7 @@ class _HomePageState extends State<HomePage> {
                   ..._smsRecords.map((record) => Card(
                     child: ListTile(
                       leading: const Icon(Icons.receipt_long_outlined, color: brand),
-                      title: Text(record['amount'] == null ? 'مبلغ شناسایی نشد' : '${_digits((record['amount'] as num).toInt())} تومان'),
+                      title: Text(record['amount'] == null ? 'مبلغ شناسایی نشد' : '${_digits((record['amount'] as num).toInt())} ${record['unit'] ?? 'تومان'}'),
                       subtitle: Text('${record['sender']}  •  ${record['date']}  •  ${record['time']}\n${record['body']}', maxLines: 4, overflow: TextOverflow.ellipsis),
                       isThreeLine: true,
                     ),
