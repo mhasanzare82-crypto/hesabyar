@@ -214,20 +214,21 @@ class _HomePageState extends State<HomePage> {
     );
     final transactionType = RegExp(r'(انتقال|برداشت|واریز|خرید)').firstMatch(body)?.group(1) ?? 'نامشخص';
     final amountMatch = RegExp(
-      r'(?:خرید|برداشت|واریز|انتقال|مبلغ|پرداخت)\\s*[:：]?\\s*([0-9,٬.]+)',
+      r'(?:خرید|برداشت|واریز|انتقال|مبلغ|پرداخت)\s*[:：]?\s*([0-9,٬.]+)',
     ).firstMatch(body);
     final rawAmount = amountMatch?.group(1);
-    final balanceMatch = RegExp(r'مانده\\s*[:：]?\\s*([0-9,٬.]+)').firstMatch(body);
+    final balanceMatch = RegExp(r'مانده\s*[:：]?\s*([0-9,٬.]+)').firstMatch(body);
     final dateMatch = RegExp(r'(?<![0-9])([0-9]{6})(?=[-–—])').firstMatch(body)
         ?? RegExp(r'([0-9]{1,4}[/-][0-9]{1,2}[/-][0-9]{1,4})').firstMatch(body);
     final timeMatch = RegExp(r'(?<![0-9])([0-2]?[0-9]:[0-5][0-9])').firstMatch(body);
-    final cardMatch = RegExp(r'کارت\\s*([0-9]{4})').firstMatch(body);
+    final cardMatch = RegExp(r'کارت\s*([0-9]{4})').firstMatch(body);
     final sender = (sms['sender'] ?? '').toString();
     final key = '${sender}_${receivedAt.millisecondsSinceEpoch}_${body.hashCode}';
     return {
       'id': key,
       'sender': sender,
-      'transactionType': transactionType,\n      'amount': rawAmount == null ? null : int.tryParse(rawAmount.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),\n      'balance': balanceMatch?.group(1) == null ? null : int.tryParse(balanceMatch!.group(1)!.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),\n      'cardLast4': cardMatch?.group(1),
+      'transactionType': transactionType,
+      'amount': rawAmount == null ? null : int.tryParse(rawAmount.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),\n      'balance': balanceMatch?.group(1) == null ? null : int.tryParse(balanceMatch!.group(1)!.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),\n      'cardLast4': cardMatch?.group(1),
       'unit': body.contains('ریال') ? 'ریال' : (body.contains('تومان') ? 'تومان' : 'واحد نامشخص'),
       'date': dateMatch?.group(1) ?? '${receivedAt.year.toString().padLeft(4, '0')}/${receivedAt.month.toString().padLeft(2, '0')}/${receivedAt.day.toString().padLeft(2, '0')}',
       'time': timeMatch?.group(1) ?? '${receivedAt.hour.toString().padLeft(2, '0')}:${receivedAt.minute.toString().padLeft(2, '0')}',
