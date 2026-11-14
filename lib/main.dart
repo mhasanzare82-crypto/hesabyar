@@ -228,7 +228,7 @@ class _HomePageState extends State<HomePage> {
       'id': key,
       'sender': sender,
       'transactionType': transactionType,\n      'amount': rawAmount == null ? null : int.tryParse(rawAmount.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),\n      'balance': balanceMatch?.group(1) == null ? null : int.tryParse(balanceMatch!.group(1)!.replaceAll(',', '').replaceAll('٬', '').replaceAll('.', '')),\n      'cardLast4': cardMatch?.group(1),
-      'unit': body.contains('ریال') ? 'ریال' : 'تومان',
+      'unit': body.contains('ریال') ? 'ریال' : (body.contains('تومان') ? 'تومان' : 'واحد نامشخص'),
       'date': dateMatch?.group(1) ?? '${receivedAt.year.toString().padLeft(4, '0')}/${receivedAt.month.toString().padLeft(2, '0')}/${receivedAt.day.toString().padLeft(2, '0')}',
       'time': timeMatch?.group(1) ?? '${receivedAt.hour.toString().padLeft(2, '0')}:${receivedAt.minute.toString().padLeft(2, '0')}',
       'receivedAt': receivedAt.toIso8601String(),
@@ -405,7 +405,7 @@ class _HomePageState extends State<HomePage> {
                   ..._smsRecords.map((record) => Card(
                     child: ListTile(
                       leading: const Icon(Icons.receipt_long_outlined, color: brand),
-                      title: Text('${record['transactionType'] ?? 'تراکنش'} • ${record['amount'] == null ? 'مبلغ شناسایی نشد' : _digits((record['amount'] as num).toInt()) + ' ' + (record['unit'] ?? 'تومان')}'),
+                      title: Text('${record['transactionType'] ?? 'تراکنش'} • ${record['amount'] == null ? 'مبلغ شناسایی نشد' : _digits((record['amount'] as num).toInt()) + ' ' + (record['unit'] ?? 'واحد نامشخص')}'),
                       subtitle: Text('${record['sender']}  •  ${record['date']}  •  ${record['time']}\n${record['body']}', maxLines: 4, overflow: TextOverflow.ellipsis),
                       isThreeLine: true,
                     ),
