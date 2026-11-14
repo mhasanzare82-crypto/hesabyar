@@ -330,48 +330,73 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _addSmsSender(StateSetter refresh) async {
     final controller = TextEditingController();
-    final value = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('افزودن فرستنده پیامک'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.text,
-          textCapitalization: TextCapitalization.none,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'شماره، سرشماره یا نام فرستنده',
-            hintText: 'مثلاً 3000، 0912... یا نام بانک',
-            helperText: 'اگر پیامک به‌جای شماره، نام فرستنده دارد، همان نام نمایشی را وارد کن.',
+    String? value;
+    try {
+      value = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('افزودن فرستنده پیامک'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.text,
+            textCapitalization: TextCapitalization.none,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'شماره، سرشماره یا نام فرستنده',
+              hintText: 'مثلاً 3000، 0912... یا نام بانک',
+              helperText: 'اگر پیامک به‌جای شماره، نام فرستنده دارد، همان نام نمایشی را وارد کن.',
+            ),
+            onSubmitted: (text) =>
+                Navigator.pop(dialogContext, text.trim()),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('انصراف'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('افزودن'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('انصراف')),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
-            child: const Text('افزودن'),
-          ),
-        ],
-      ),
-    );
-    if (value == null || value.isEmpty) return;
-    if (!_smsSenders.any((item) => item.toLowerCase() == value.toLowerCase())) {
-      _smsSenders.add(value);
+      );
+    } finally {
+      controller.dispose();
     }
-    // Persist the allowlist in Android SharedPreferences immediately,
-    // even while monitoring is disabled. Otherwise it disappears after
-    // leaving/restarting the app and activation sees an empty list.
+
+    if (!mounted || value == null) return;
+    final sender = value.trim();
+    if (sender.isEmpty) {
+      _notify('شماره یا نام فرستنده را وارد کن.');
+      return;
+    }
+
+    final alreadyExists = _smsSenders.any(
+      (item) => item.trim().toLowerCase() == sender.toLowerCase(),
+    );
+    if (alreadyExists) {
+      _notify('این فرستنده قبلاً اضافه شده است.');
+      return;
+    }
+
+    // Update the visible list immediately. Native persistence must not
+    // block the settings page from showing the newly added sender.
+    _smsSenders.add(sender);
+    refresh(() {});
+
     try {
       await _smsChannel.invokeMethod<void>('setSmsConfig', {
         'enabled': _smsEnabled,
-        'senders': _smsSenders,
+        'senders': List<String>.from(_smsSenders),
       });
     } on PlatformException catch (e) {
-      _notify('ذخیره فرستنده انجام نشد: ${e.message ?? 'خطای نامشخص'}');
+      _notify('فرستنده در صفحه اضافه شد، اما ذخیره اندروید ناموفق بود: '
+          '${e.message ?? 'خطای نامشخص'}');
     } on MissingPluginException {
-      _notify('ذخیره فرستنده فقط در نسخه اندروید در دسترس است.');
+      _notify('فرستنده در صفحه اضافه شد؛ ذخیره‌سازی پیامک فقط در نسخه اندروید فعال است.');
     }
-    refresh(() {});
   }
 
   Future<void> _openSmsSettings() async {
