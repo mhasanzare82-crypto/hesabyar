@@ -3,6 +3,8 @@ package com.hesabyar.app
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.provider.Telephony
 import io.flutter.plugin.common.EventChannel
 import org.json.JSONArray
@@ -18,7 +20,9 @@ object SmsEventBus {
     var sink: EventChannel.EventSink? = null
 
     fun emit() {
-        sink?.success(true)
+        Handler(Looper.getMainLooper()).post {
+            sink?.success(true)
+        }
     }
 }
 
