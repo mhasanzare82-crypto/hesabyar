@@ -292,14 +292,16 @@ class _HomePageState extends State<HomePage> {
     final value = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('افزودن شماره فرستنده'),
+        title: const Text('افزودن فرستنده پیامک'),
         content: TextField(
           controller: controller,
-          keyboardType: TextInputType.phone,
+          keyboardType: TextInputType.text,
+          textCapitalization: TextCapitalization.none,
           autofocus: true,
           decoration: const InputDecoration(
-            labelText: 'شماره یا سرشماره پیامک',
-            hintText: 'مثلاً 3000 یا 0912...',
+            labelText: 'شماره، سرشماره یا نام فرستنده',
+            hintText: 'مثلاً 3000، 0912... یا نام بانک',
+            helperText: 'اگر پیامک به‌جای شماره، نام فرستنده دارد، همان نام نمایشی را وارد کن.',
           ),
         ),
         actions: [
@@ -312,7 +314,9 @@ class _HomePageState extends State<HomePage> {
       ),
     );
     if (value == null || value.isEmpty) return;
-    if (!_smsSenders.contains(value)) _smsSenders.add(value);
+    if (!_smsSenders.any((item) => item.toLowerCase() == value.toLowerCase())) {
+      _smsSenders.add(value);
+    }
     refresh(() {});
     if (_smsEnabled) await _setSmsMonitoring(true);
   }
@@ -368,7 +372,7 @@ class _HomePageState extends State<HomePage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('شماره‌های مجاز', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const Text('فرستنده‌های مجاز', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     TextButton.icon(
                       onPressed: () => _addSmsSender(refresh),
                       icon: const Icon(Icons.add),
