@@ -69,7 +69,9 @@ class MainActivity : FlutterActivity() {
                         result.success((0 until queue.length()).map { index ->
                             val item = queue.getJSONObject(index)
                             mapOf(
-                                "id" to item.optString("id"),
+                                "id" to item.optString("id").ifBlank {
+                                    "${item.optString("sender")}|${item.optLong("timestamp")}|${item.optString("body").hashCode()}"
+                                },
                                 "sender" to item.optString("sender"),
                                 "body" to item.optString("body"),
                                 "timestamp" to item.optLong("timestamp")
