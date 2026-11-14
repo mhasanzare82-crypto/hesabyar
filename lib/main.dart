@@ -267,8 +267,18 @@ class _HomePageState extends State<HomePage> {
       if (enabled) {
         final granted = await _smsChannel.invokeMethod<bool>('hasSmsPermission') ?? false;
         if (!granted) {
-          await _smsChannel.invokeMethod<void>('requestSmsPermission');
-          return false;
+          final permissionResult = await _smsChannel
+              .invokeMapMethod<String, dynamic>('requestSmsPermission');
+          final permissionGranted = permissionResult?['granted'] == true;
+          if (!permissionGranted) {
+            final canAskAgain = permissionResult?['canAskAgain'] == true;
+            if (!canAskAgain && mounted) {
+              await _showSmsPermissionSettingsDialog();
+            } else {
+              _notify('مجوز دریافت پیامک داده نشد. برای فعال‌سازی دوباره تلاش کن.');
+            }
+            return false;
+          }
         }
       }
       await _smsChannel.invokeMethod<void>('setSmsConfig', {
@@ -284,6 +294,37 @@ class _HomePageState extends State<HomePage> {
     } on MissingPluginException {
       _notify('قابلیت پیامک فقط در نسخه اندروید در دسترس است.');
       return false;
+    }
+  }
+
+  Future<void> _showSmsPermissionSettingsDialog() async {
+    if (!mounted) return;
+    final openSettings = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('مجوز پیامک غیرفعال است'),
+        content: const Text(
+          'دسترسی پیامک رد شده و اندروید دیگر پنجره درخواست را نمایش نمی‌دهد. '
+          'برای فعال‌سازی، وارد تنظیمات برنامه شو و مجوز پیامک را دستی روشن کن.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('فعلاً نه'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('رفتن به تنظیمات'),
+          ),
+        ],
+      ),
+    );
+    if (openSettings == true) {
+      try {
+        await _smsChannel.invokeMethod<bool>('openAppSettings');
+      } on PlatformException catch (e) {
+        _notify('باز کردن تنظیمات ناموفق بود: ${e.message ?? 'خطای نامشخص'}');
+      }
     }
   }
 
@@ -366,8 +407,8 @@ class _HomePageState extends State<HomePage> {
                               return;
                             }
                             final ok = await _setSmsMonitoring(value);
-                            if (!ok && value) {
-                              _notify('اگر مجوز را تأیید کردی، دوباره کلید فعال‌سازی را روشن کن.');
+                            if (!ok && value && mounted) {
+                              refresh(() {});
                             }
                             refresh(() {});
                           },
