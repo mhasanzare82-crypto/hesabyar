@@ -256,6 +256,88 @@ class _HomePageState extends State<HomePage> {
     };
   }
 
+  /// Automatically creates a transaction only when the SMS clearly states
+  /// the direction and currency. Ambiguous transfers or unknown units remain
+  /// in the SMS inbox for manual review.
+  bool _createTransactionFromSms(Map<String, dynamic> record) {
+    if (_accounts.isEmpty) {
+      record['autoStatus'] = 'needs_account';
+      return false;
+    }
+
+    final body = (record['body'] ?? '').toString();
+    final typeLabel = (record['transactionType'] ?? '').toString();
+    final amount = (record['amount'] as num?)?.toInt();
+    if (amount == null || amount <= 0) {
+      record['autoStatus'] = 'needs_review_amount';
+      return false;
+    }
+
+    String? type;
+    if (body.contains('واریز')) {
+      type = 'income';
+    } else if (body.contains('برداشت') || body.contains('خرید')) {
+      type = 'expense';
+    } else if (body.contains('پرداخت')) {
+      type = 'expense';
+    }
+
+    if (type == null) {
+      record['autoStatus'] = 'needs_review_type';
+      return false;
+    }
+
+    // The app stores all values in toman. Only convert when the SMS explicitly
+    // declares rial/toman; do not guess the unit of an unlabelled amount.
+    final unit = (record['unit'] ?? '').toString();
+    int amountInToman;
+    if (unit == 'ریال') {
+      amountInToman = amount ~/ 10;
+    } else if (unit == 'تومان') {
+      amountInToman = amount;
+    } else {
+      record['autoStatus'] = 'needs_review_unit';
+      return false;
+    }
+    if (amountInToman <= 0) {
+      record['autoStatus'] = 'needs_review_amount';
+      return false;
+    }
+
+    final smsId = (record['id'] ?? '').toString();
+    final transactionId = 'sms_$smsId';
+    if (_transactions.any((tx) => tx.id == transactionId)) {
+      record['autoStatus'] = 'created';
+      record['autoTransactionId'] = transactionId;
+      return false;
+    }
+
+    final receivedAt = DateTime.tryParse(
+          (record['receivedAt'] ?? '').toString(),
+        ) ??
+        DateTime.now();
+    final title = type == 'income'
+        ? 'واریز از طریق پیامک'
+        : (body.contains('خرید') ? 'خرید از طریق پیامک' : 'برداشت از طریق پیامک');
+
+    _transactions.insert(
+      0,
+      MoneyTransaction(
+        id: transactionId,
+        title: title,
+        amount: amountInToman,
+        type: type,
+        accountId: _accounts.first.id,
+        date: receivedAt,
+        note: 'ثبت خودکار از پیامک فرستنده ${record['sender'] ?? ''}\n$body',
+      ),
+    );
+    record['autoStatus'] = 'created';
+    record['autoTransactionId'] = transactionId;
+    record['autoAmountToman'] = amountInToman;
+    return true;
+  }
+
   Future<void> _syncIncomingSms() async {
     try {
       final incoming = await _smsChannel.invokeListMethod<dynamic>('getPendingSms') ?? [];
@@ -264,6 +346,7 @@ class _HomePageState extends State<HomePage> {
         if (item is! Map) continue;
         final record = _parseSms(Map<String, dynamic>.from(item));
         if (!_smsRecords.any((e) => e['id'] == record['id'])) {
+          _createTransactionFromSms(record);
           _smsRecords.insert(0, record);
           changed = true;
         }
