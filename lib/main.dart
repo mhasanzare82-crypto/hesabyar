@@ -240,7 +240,7 @@ class _HomePageState extends State<HomePage> {
     final timeMatch = RegExp(r'(?<![0-9])([0-2]?[0-9]:[0-5][0-9])').firstMatch(body);
     final cardMatch = RegExp(r'کارت\s*([0-9]{4})').firstMatch(body);
     final sender = (sms['sender'] ?? '').toString();
-    final key = '${sender}_${receivedAt.millisecondsSinceEpoch}_${body.hashCode}';
+    final key = (sms['id'] ?? '${sender}_${receivedAt.millisecondsSinceEpoch}_${body.hashCode}').toString();
     return {
       'id': key,
       'sender': sender,
@@ -348,12 +348,14 @@ class _HomePageState extends State<HomePage> {
           changed = true;
         }
       }
-      if (incoming.isNotEmpty) {
-        await _smsChannel.invokeMethod<void>('clearPendingSms');
-      }
+      // Persist extracted records before acknowledging the native queue.
+      // If local storage fails, Android keeps the queue for the next retry.
       if (changed) {
         await _saveData();
         if (mounted) setState(() {});
+      }
+      if (incoming.isNotEmpty) {
+        await _smsChannel.invokeMethod<void>('clearPendingSms');
       }
     } on PlatformException {
       // Permission may be unavailable or revoked.
