@@ -355,7 +355,17 @@ class _HomePageState extends State<HomePage> {
         if (mounted) setState(() {});
       }
       if (incoming.isNotEmpty) {
-        await _smsChannel.invokeMethod<void>('clearPendingSms');
+        final acknowledgedIds = incoming
+            .whereType<Map>()
+            .map((item) => (item['id'] ?? '').toString())
+            .where((id) => id.isNotEmpty)
+            .toList();
+        if (acknowledgedIds.isNotEmpty) {
+          await _smsChannel.invokeMethod<bool>(
+            'ackPendingSms',
+            {'ids': acknowledgedIds},
+          );
+        }
       }
     } on PlatformException {
       // Permission may be unavailable or revoked.
