@@ -153,10 +153,6 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _smsSubscription = _smsEvents.receiveBroadcastStream().listen(
-      (_) => _syncIncomingSms(),
-      onError: (_) {},
-    );
     _loadData();
   }
 
@@ -208,6 +204,14 @@ class _HomePageState extends State<HomePage> {
       // Keep the rest of the app usable on unsupported platforms.
     }
     if (mounted) setState(() => _loading = false);
+    if (mounted) {
+      _smsSubscription = _smsEvents.receiveBroadcastStream().listen(
+        (_) => _syncIncomingSms(),
+        onError: (_) {},
+      );
+      // Catch messages received between the initial load and stream setup.
+      await _syncIncomingSms();
+    }
   }
 
 
