@@ -48,3 +48,5 @@ jobs:
           name: hesabyar-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+
+# Build trigger: SMS sender persistence fix verification
